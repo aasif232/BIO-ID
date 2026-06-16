@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | Document Service Center</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <h1>Document Service Center Portal</h1>
+        <div class="nav-links">
+            <a href="/dashboard" class="active">Dashboard</a>
+            <a href="/history">History Logs</a>
+            <a href="/" onclick="localStorage.clear()">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <h2>Device Management</h2>
+            <button class="btn btn-primary" onclick="showAddDevice()">+ Register New ESP32 Sensor</button>
+        </div>
+        
+        <div id="device-list" class="grid-3">
+            <!-- Devices here -->
+        </div>
+    </div>
+
+    <script>
+        const centerId = localStorage.getItem('center_id');
+        if(!centerId) window.location.href = "/";
+
+        async function loadDevices() {
+            const res = await fetch('/api/get_devices/' + centerId);
+            const data = await res.json();
+            const list = document.getElementById('device-list');
+            list.innerHTML = '';
+            
+            if(data.devices.length === 0) {
+                list.innerHTML = "<p>No devices configured. Please register a new sensor.</p>";
+            }
+
+            data.devices.forEach(d => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <h3 style="color: var(--primary);">${d.name}</h3>
+                        <button class="btn btn-outline" style="border-color: var(--danger); color: var(--danger); padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="removeDevice(${d.id})">Remove</button>
+                    </div>
+                    <p style="color:#666; margin-bottom: 1.5rem; font-size: 0.9rem;">IP Address: ${d.ip_address}</p>
+                    <button class="btn btn-outline" style="width:100%; margin-bottom:0.5rem;" onclick="goRegister(${d.id}, '${d.ip_address}')">Register User (Scan)</button>
+                    <button class="btn btn-success" style="width:100%;" onclick="goAccess(${d.id}, '${d.ip_address}')">Access Documents</button>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        async function showAddDevice() {
+            const name = prompt("Enter Sensor Name (e.g. Scanner 1):");
+            if(!name) return;
+            const ip = prompt("Enter ESP32 IP Address:");
+            if(!ip) return;
+            
+            const fd = new FormData();
+            fd.append('center_id', centerId);
+            fd.append('name', name);
+            fd.append('ip', ip);
+            
+            const res = await fetch('/api/add_device', {method: 'POST', body: fd});
+            if((await res.json()).success) loadDevices();
+        }
+
+        async function removeDevice(id) {
+            if(confirm("Are you sure you want to remove this device? Associated history logs will be explicitly preserved under 'Removed Device'.")) {
+                const res = await fetch('/api/remove_device/' + id, {method: 'DELETE'});
+                if((await res.json()).success) {
+                    loadDevices();
+                } else {
+                    alert("Failed to remove device.");
+                }
+            }
+        }
+
+        function goRegister(id, ip) {
+            localStorage.setItem('active_device_id', id);
+            localStorage.setItem('active_device_ip', ip);
+            window.location.href = "/register";
+        }
+        
+        function goAccess(id, ip) {
+            localStorage.setItem('active_device_id', id);
+            localStorage.setItem('active_device_ip', ip);
+            window.location.href = "/access";
+        }
+
+        loadDevices();
+    </script>
+</body>
+</html>

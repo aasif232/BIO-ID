@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Center Login</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div style="display: flex; align-items: center;">
+            <img src="/static/logo.png" class="nav-logo" onerror="this.style.display='none'">
+            <h1>Document Service Center Portal</h1>
+        </div>
+    </div>
+    <div class="container" style="max-width: 400px; margin-top: 4rem;">
+        <div class="card">
+            <h2 class="card-header">Admin Login</h2>
+            <form id="login-form">
+                <div class="form-group">
+                    <label>Email Address</label>
+                    <input type="email" id="login-email" class="form-control" value="admin@service.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="login-pwd" class="form-control" value="admin" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Secure Login</button>
+                <div style="text-align: center; margin-top: 1rem;">
+                    <a href="/register_center" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">Register a New Service Center</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData();
+            fd.append('email', document.getElementById('login-email').value);
+            fd.append('password', document.getElementById('login-pwd').value);
+            
+            const res = await fetch('/api/login', {method: 'POST', body: fd});
+            const data = await res.json();
+            if(data.success) {
+                localStorage.setItem('center_id', data.center_id);
+                localStorage.setItem('center_name', data.center_name);
+                window.location.href = "/dashboard";
+            } else {
+                alert(data.msg);
+            }
+        });
+    </script>
+</body>
+</html>

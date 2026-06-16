@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Documents | Document Service Center</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .profile-table td { padding: 0.5rem 1rem; border: none; }
+        .profile-table td:first-child { font-weight: bold; width: 150px; color: var(--primary); }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <h1>Document Service Center Portal</h1>
+        <div class="nav-links">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/history">History Logs</a>
+            <a href="/" onclick="localStorage.clear()">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2 style="margin-bottom: 2rem;">Secure Document Access</h2>
+        
+        <!-- SCANNING -->
+        <div id="acc-step-1" class="card" style="text-align: center;">
+            <div id="acc-loader" class="hidden">
+                <div class="ai-loader-container">
+                    <div class="ai-pulse-ring"></div>
+                    <div class="ai-terminal" id="acc-terminal"></div>
+                </div>
+            </div>
+            <h3 id="acc-status-text" style="margin: 1rem 0; color: var(--primary);">System Ready</h3>
+            <button id="btn-start-acc-scan" class="btn btn-success" onclick="scanFingerprint()">Perform Biometric Scan</button>
+        </div>
+        
+        <!-- RESULTS -->
+        <div id="acc-results" class="hidden">
+            <div class="card">
+                <h3 class="card-header">Identity Official Profile</h3>
+                <table class="profile-table">
+                    <tr><td>Full Name:</td><td id="acc-name">-</td></tr>
+                    <tr><td>Contact Phone:</td><td id="acc-phone">-</td></tr>
+                    <tr><td>Email Address:</td><td id="acc-email">-</td></tr>
+                    <tr><td>Physical Address:</td><td id="acc-address">-</td></tr>
+                    <tr><td>Official Details:</td>
+                        <td>
+                            <span id="acc-blood" class="badge"></span>
+                            <span id="acc-gender" class="badge"></span>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="card">
+                <h3 class="card-header">Associated Documents</h3>
+                <table id="docs-table">
+                    <thead>
+                        <tr>
+                            <th>Document Descriptor</th>
+                            <th style="width: 150px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="acc-docs-list">
+                        <!-- Dynamic Docs -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <button class="btn btn-primary" onclick="window.location.reload()" style="width: 100%;">Clear Page</button>
+        </div>
+    </div>
+
+    <script>
+        const devIp = localStorage.getItem('active_device_ip');
+        const devId = localStorage.getItem('active_device_id');
+        const centerId = localStorage.getItem('center_id');
+        if(!devIp || !devId) window.location.href = "/dashboard";
+
+        const terminalLines = [
+            { text: "[ * ] Connecting to Hardware Vector Node at " + devIp + "...", delay: 800, class: "cyan" },
+            { text: "[ * ] Extracting biometric tensor (Scan pass 1/3)...", delay: 2500, class: "" },
+            { text: "[ * ] Forward pass: Blood_Model.h5 (Shape: 64x64x3)...", delay: 800, class: "" },
+            { text: "[ * ] Forward pass: Gender_Model.h5 (Shape: 96x96x1)...", delay: 800, class: "" },
+            { text: "[ * ] Extracting biometric tensor (Scan pass 2/3)...", delay: 2500, class: "" },
+            { text: "[ * ] Aggregating probability distributions...", delay: 800, class: "" },
+            { text: "[ * ] Engaging OpenCV SIFT matching algorithm...", delay: 1000, class: "yellow" },
+            { text: "[ + ] Cross-referencing SQLite database anchors...", delay: 600, class: "" }
+        ];
+
+        async function playTerminalAnim(containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            let totalWait = 0;
+            for(let i=0; i<terminalLines.length; i++) {
+                setTimeout(() => {
+                    const el = document.createElement('div');
+                    el.className = 'ai-terminal-line ' + terminalLines[i].class;
+                    el.innerText = terminalLines[i].text;
+                    container.appendChild(el);
+                    container.scrollTop = container.scrollHeight;
+                }, totalWait);
+                totalWait += terminalLines[i].delay;
+            }
+        }
+
+        async function scanFingerprint() {
+            document.getElementById('btn-start-acc-scan').classList.add('hidden');
+            document.getElementById('acc-loader').classList.remove('hidden');
+            document.getElementById('acc-status-text').innerText = "Processing...";
+            
+            playTerminalAnim('acc-terminal');
+            
+            const fd = new FormData();
+            fd.append('ip', devIp);
+            fd.append('center_id', centerId);
+            fd.append('device_id', devId);
+            
+            try {
+                const res = await fetch('/api/access_docs', {method: 'POST', body: fd});
+                const data = await res.json();
+                
+                if(data.success) {
+                    document.getElementById('acc-step-1').classList.add('hidden');
+                    document.getElementById('acc-results').classList.remove('hidden');
+                    
+                    document.getElementById('acc-name').innerText = data.user.name;
+                    document.getElementById('acc-phone').innerText = data.user.phone || 'N/A';
+                    document.getElementById('acc-email').innerText = data.user.email || 'N/A';
+                    document.getElementById('acc-address').innerText = data.user.address || 'N/A';
+                    
+                    document.getElementById('acc-blood').innerText = "Blood: " + data.user.blood_group;
+                    document.getElementById('acc-gender').innerText = "Gender: " + data.user.gender;
+                    document.getElementById('btn-start-acc-scan').setAttribute('data-userid', data.user.id);
+                    
+                    const d_list = document.getElementById('acc-docs-list');
+                    d_list.innerHTML = '';
+                    if(data.documents.length === 0) {
+                        d_list.innerHTML = "<tr><td colspan='2' style='text-align:center;'>No documents exist for this user.</td></tr>";
+                    } else {
+                        data.documents.forEach(d => {
+                            d_list.innerHTML += `<tr>
+                                <td><strong>${d.document_type}</strong></td>
+                                <td>
+                                    <a href="/api/download_doc?path=${encodeURIComponent(d.file_path)}&user_id=${data.user.id}&center_id=${centerId}&device_id=${devId}" class="btn btn-outline" style="padding: 0.5rem 1rem;" target="_blank">Download PDF</a>
+                                    <button class="btn btn-danger" style="background:var(--danger); color:white; border:none; padding: 0.5rem 1rem; margin-left: 0.5rem;" onclick="deleteDoc(${d.id})">Delete</button>
+                                </td>
+                            </tr>`;
+                        });
+                        
+                        // Injection of Upload form implicitly
+                        d_list.innerHTML += `
+                            <tr>
+                                <td><input type="text" id="new-doc-name" class="form-control" placeholder="New Document Name"></td>
+                                <td>
+                                    <input type="file" id="new-doc-file" class="form-control" style="display:inline-block; width: auto; font-size:0.8rem;" accept=".pdf">
+                                    <button class="btn btn-success" style="padding: 0.5rem 1rem;" onclick="uploadDoc(${data.user.id})">Upload</button>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                } else {
+                    alert(data.msg);
+                    resetScan();
+                }
+            } catch(e) {
+                alert("Network error.");
+                resetScan();
+            }
+        }
+
+        async function deleteDoc(doc_id) {
+            if(!confirm("Permenantly delete this document?")) return;
+            // The active_user id isn't stored locally, grabbing from API is preferred but let's query param
+            // Assuming this operates within the resolved session.
+            const userId = document.getElementById('btn-start-acc-scan').getAttribute('data-userid'); 
+            const res = await fetch('/api/delete_doc/' + doc_id + '?user_id=' + userId + '&center_id=' + centerId + '&device_id=' + devId, {method: 'DELETE'});
+            if((await res.json()).success) alert("Deleted!"); window.location.reload();
+        }
+
+        async function uploadDoc(user_id) {
+            const name = document.getElementById('new-doc-name').value;
+            const file = document.getElementById('new-doc-file').files[0];
+            if(!name || !file) { alert("Please provide a name and a file."); return; }
+            
+            const fd = new FormData();
+            fd.append('user_id', user_id);
+            fd.append('center_id', centerId);
+            fd.append('device_id', devId);
+            fd.append('doc_name', name);
+            fd.append('doc_file', file);
+            
+            const res = await fetch('/api/upload_doc', {method: 'POST', body: fd});
+            if((await res.json()).success) { alert("Uploaded!"); window.location.reload(); }
+        }
+
+        function resetScan() {
+            document.getElementById('btn-start-acc-scan').classList.remove('hidden');
+            document.getElementById('acc-loader').classList.add('hidden');
+            document.getElementById('acc-status-text').innerText = "System Ready";
+        }
+    </script>
+</body>
+</html>

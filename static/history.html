@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activity History | Document Service Center</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div style="display: flex; align-items: center;">
+            <img src="/static/logo.png" class="nav-logo" onerror="this.style.display='none'">
+            <h1>Document Service Center Portal</h1>
+        </div>
+        <div class="nav-links">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/history" class="active">History Logs</a>
+            <a href="/" onclick="localStorage.clear()">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2 style="margin-bottom: 2rem;">Global Activity Log</h2>
+        
+        <div class="card" style="padding: 0;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Auditable Action</th>
+                        <th>User Affected</th>
+                        <th>Service Center</th>
+                        <th>Terminal Node</th>
+                    </tr>
+                </thead>
+                <tbody id="history-list">
+                    <!-- Logs here -->
+                    <tr><td colspan="5" style="text-align: center;">Loading logs...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const centerId = localStorage.getItem('center_id');
+        if(!centerId) window.location.href = "/";
+
+        async function loadHistory() {
+            try {
+                const res = await fetch('/api/history');
+                const data = await res.json();
+                
+                const list = document.getElementById('history-list');
+                list.innerHTML = '';
+                
+                if(data.logs.length === 0) {
+                    list.innerHTML = "<tr><td colspan='5' style='text-align: center;'>No activity logs found.</td></tr>";
+                    return;
+                }
+                
+                data.logs.forEach(log => {
+                    const tr = document.createElement('tr');
+                    const d = new Date(log.timestamp + "Z");
+                    
+                    let actionHtml = `<span class="badge" style="background:var(--info)">${log.action_type}</span> <br> <span style="font-size:0.8rem; color:#666">${log.details}</span>`;
+                    if(log.action_type === 'DELETED_DOC') actionHtml = `<span class="badge" style="background:var(--danger)">DELETED</span> <br> <span style="font-size:0.8rem;">${log.details}</span>`;
+                    if(log.action_type === 'UPLOADED_DOC') actionHtml = `<span class="badge" style="background:var(--success)">UPLOADED</span> <br> <span style="font-size:0.8rem;">${log.details}</span>`;
+                    if(log.action_type === 'DOWNLOADED_DOC') actionHtml = `<span class="badge" style="background:var(--primary)">DOWNLOAD</span> <br> <span style="font-size:0.8rem;">${log.details}</span>`;
+
+                    tr.innerHTML = `
+                        <td>${d.toLocaleString()}</td>
+                        <td>${actionHtml}</td>
+                        <td style="font-weight: bold; color: var(--primary);">${log.user_name}</td>
+                        <td>${log.center_name}</td>
+                        <td><span class="badge">${log.device_name}</span></td>
+                    `;
+                    list.appendChild(tr);
+                });
+            } catch(e) {
+                document.getElementById('history-list').innerHTML = "<tr><td colspan='4' style='text-align: center; color: red;'>Failed to fetch history logs.</td></tr>";
+            }
+        }
+        
+        loadHistory();
+    </script>
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register User | Document Service Center</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <h1>Document Service Center Portal</h1>
+        <div class="nav-links">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/history">History Logs</a>
+            <a href="/" onclick="localStorage.clear()">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2 style="margin-bottom: 2rem;">User Registration Form</h2>
+        
+        <!-- STEP 1: SCANNING -->
+        <div id="reg-step-1" class="card" style="text-align: center;">
+            <div id="reg-loader" class="hidden">
+                <div class="ai-loader-container">
+                    <div class="ai-pulse-ring"></div>
+                    <div class="ai-terminal" id="reg-terminal"></div>
+                </div>
+            </div>
+            <h3 id="reg-status-text" style="margin: 1rem 0; color: var(--primary);">System Ready</h3>
+            <button id="btn-start-scan" class="btn btn-success" onclick="triggerScan()">Initiate Biometric Scan (3 Taps)</button>
+        </div>
+        
+        <!-- STEP 2: FORM -->
+        <form id="reg-form" class="card hidden">
+            <h3 class="card-header">Personal Information</h3>
+            <input type="hidden" id="temp_fp_path">
+            
+            <div class="grid-2" style="margin-bottom: 1rem;">
+                <div class="form-group">
+                    <label>Full Name *</label>
+                    <input type="text" id="reg-name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Email Address</label>
+                    <input type="email" id="reg-email" class="form-control">
+                </div>
+            </div>
+            
+            <div class="grid-2" style="margin-bottom: 1rem;">
+                <div class="form-group">
+                    <label>Phone Number *</label>
+                    <input type="text" id="reg-phone" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Physical Address *</label>
+                    <input type="text" id="reg-address" class="form-control" required>
+                </div>
+            </div>
+            
+            <div class="ai-box">
+                <h4 style="margin-bottom: 1rem; color: var(--primary);">Biometric AI Profiler (Auto-Filled)</h4>
+                <p style="font-size: 0.85rem; margin-bottom: 1rem;">These values are auto-detected by the AI models during the sensor scan. If the AI is incorrect, you may manually override them below before submitting.</p>
+                <div class="grid-2">
+                    <div class="form-group" style="margin: 0;">
+                        <label>Blood Group</label>
+                        <select id="reg-blood" class="form-control">
+                            <option value="A+">A+</option><option value="A-">A-</option>
+                            <option value="B+">B+</option><option value="B-">B-</option>
+                            <option value="AB+">AB+</option><option value="AB-">AB-</option>
+                            <option value="O+">O+</option><option value="O-">O-</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>Gender</label>
+                        <select id="reg-gender" class="form-control">
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 2rem;">
+                <h3 class="card-header" style="display: flex; justify-content: space-between;">
+                    Identity Documents
+                    <button type="button" class="btn btn-outline" style="padding: 0.25rem 1rem;" onclick="addDocumentRow()">+ Add Document</button>
+                </h3>
+                <div id="dynamic-docs" style="margin-bottom: 1.5rem;">
+                    <!-- Rows injected here -->
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-success" style="width: 100%; font-size: 1.1rem; padding: 1rem;">Complete Registration</button>
+        </form>
+    </div>
+
+    <script>
+        const devIp = localStorage.getItem('active_device_ip');
+        if(!devIp) window.location.href = "/dashboard";
+
+        function addDocumentRow(name = "") {
+            const div = document.createElement('div');
+            div.className = 'doc-row';
+            div.innerHTML = `
+                <div style="flex: 1;">
+                    <input type="text" class="form-control doc-name" placeholder="Document Name (e.g. Aadhaar)" required value="${name}">
+                </div>
+                <div style="flex: 1;">
+                    <input type="file" class="form-control doc-file" accept=".pdf" required>
+                </div>
+                <button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" style="background:var(--danger);color:white;border:none;">X</button>
+            `;
+            document.getElementById('dynamic-docs').appendChild(div);
+        }
+
+        // Initialize with typical defaults
+        addDocumentRow("Aadhaar Card");
+        addDocumentRow("PAN Card");
+
+        const terminalLines = [
+            { text: "[ * ] Connecting to Hardware Vector Node at " + devIp + "...", delay: 800, class: "cyan" },
+            { text: "[ * ] Extracting biometric tensor (Scan pass 1/3)...", delay: 2500, class: "" },
+            { text: "[ * ] Forward pass: Blood_Model.h5 (Shape: 64x64x3)...", delay: 800, class: "" },
+            { text: "[ * ] Forward pass: Gender_Model.h5 (Shape: 96x96x1)...", delay: 800, class: "" },
+            { text: "[ * ] Extracting biometric tensor (Scan pass 2/3)...", delay: 2500, class: "" },
+            { text: "[ * ] Aggregating probability distributions...", delay: 800, class: "" },
+            { text: "[ * ] Engaging OpenCV SIFT matching algorithm...", delay: 1000, class: "yellow" },
+            { text: "[ + ] Cross-referencing SQLite database anchors...", delay: 600, class: "" }
+        ];
+
+        async function playTerminalAnim(containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            let totalWait = 0;
+            for(let i=0; i<terminalLines.length; i++) {
+                setTimeout(() => {
+                    const el = document.createElement('div');
+                    el.className = 'ai-terminal-line ' + terminalLines[i].class;
+                    el.innerText = terminalLines[i].text;
+                    container.appendChild(el);
+                    container.scrollTop = container.scrollHeight;
+                }, totalWait);
+                totalWait += terminalLines[i].delay;
+            }
+        }
+
+        async function triggerScan() {
+            document.getElementById('btn-start-scan').classList.add('hidden');
+            document.getElementById('reg-loader').classList.remove('hidden');
+            document.getElementById('reg-status-text').innerText = "Processing...";
+            
+            playTerminalAnim('reg-terminal');
+            
+            const fd = new FormData();
+            fd.append('ip', devIp);
+            
+            try {
+                const res = await fetch('/api/scan_registration', {method: 'POST', body: fd});
+                const data = await res.json();
+                
+                if(data.success) {
+                    document.getElementById('reg-step-1').classList.add('hidden');
+                    document.getElementById('reg-form').classList.remove('hidden');
+                    
+                    document.getElementById('reg-blood').value = data.blood_group;
+                    document.getElementById('reg-gender').value = data.gender;
+                    document.getElementById('temp_fp_path').value = data.temp_fingerprint_path;
+                } else {
+                    alert(data.msg);
+                    resetScan();
+                }
+            } catch(e) {
+                alert("Network error. Is backend running?");
+                resetScan();
+            }
+        }
+
+        function resetScan() {
+            document.getElementById('btn-start-reg-scan').classList.remove('hidden');
+            document.getElementById('reg-loader').classList.add('hidden');
+            document.getElementById('reg-status-text').innerText = "Ready.";
+        }
+
+        document.getElementById('reg-form').addEventListener('submit', async(e) => {
+            e.preventDefault();
+            const fd = new FormData();
+            fd.append('name', document.getElementById('reg-name').value);
+            fd.append('email', document.getElementById('reg-email').value);
+            fd.append('phone', document.getElementById('reg-phone').value);
+            fd.append('address', document.getElementById('reg-address').value);
+            fd.append('blood_group', document.getElementById('reg-blood').value);
+            fd.append('gender', document.getElementById('reg-gender').value);
+            fd.append('temp_fingerprint_path', document.getElementById('temp_fp_path').value);
+            
+            // Append dynamic arrays
+            const names = document.querySelectorAll('.doc-name');
+            const files = document.querySelectorAll('.doc-file');
+            
+            for(let i=0; i<names.length; i++) {
+                fd.append('doc_names', names[i].value);
+                fd.append('doc_files', files[i].files[0]);
+            }
+            
+            const res = await fetch('/api/register_user', {method: 'POST', body: fd});
+            const data = await res.json();
+            alert(data.msg);
+            if(data.success) {
+                document.getElementById('reg-form').reset();
+                window.location.href = "/dashboard";
+            }
+        });
+    </script>
+</body>
+</html>
